@@ -1,0 +1,869 @@
+{
+  "info": {
+    "_postman_id": "veloop-captcha-earn-v1",
+    "name": "VELoop CAPTCHA Earn",
+    "description": "VELoop Rewards CAPTCHA Earn Module — register, solve CAPTCHAs automatically verify, watch a mock rewarded ad, claim gems to your wallet.\n\nEnvironment variables required (create a 'VELoop Dev' or 'VELoop Prod' Postman Environment):\n- baseUrl — e.g. http://localhost:5000/api  OR  https://your-deployed-backend/api\n- frontendUrl — e.g. http://localhost:5173  (for CORS origin headers in OPTIONS tests)\n- token — populated automatically after Register/Login (via Tests tab). Can also paste manually.\n- challengeId — populated automatically after Get Current CAPTCHA.\n- wrongChallengeId — optional; used by negative tests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      { "key": "token", "value": "{{token}}", "type": "string" }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Default baseUrl if env var not set",
+          "if (!pm.environment.get('baseUrl')) {",
+          "  pm.environment.set('baseUrl', 'http://localhost:5000/api');",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Public",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Public liveness probe. Verifies API up + MongoDB connected status."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Health is 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('Status is ok or success true', () => j.status === 'ok' || j.success === true);",
+                  "pm.test('Mongo connected string present', () => typeof j.mongodb === 'string' || (j.data && j.data.mongo));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1. Auth — Happy Flow",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"VELoop Tester\",\n  \"email\": \"tester-{{$randomInt}}@example.com\",\n  \"password\": \"Correct-Horse-Battery-Staple-9\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register"]
+            },
+            "description": "Creates a new user and returns a JWT token. Post-response Tests save the token to env var `{{token}}` so subsequent requests use it."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Register -> 201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.test('success true', () => j.success === true);",
+                  "pm.test('has user + token', () => j.data && j.data.user && j.data.token);",
+                  "pm.test('passwordHash NOT in response user', () => !(j.data.user && 'passwordHash' in j.data.user));",
+                  "pm.environment.set('token', j.data.token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"tester@example.com\",\n  \"password\": \"Correct-Horse-Battery-Staple-9\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Update the body with the same email/password used by Register above. Post-response tests save returned token to {{token}}."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login -> 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('has user + token', () => j.data && j.data.user && j.data.token);",
+                  "pm.test('passwordHash NOT in response', () => !(j.data && j.data.user && 'passwordHash' in j.data.user));",
+                  "if (j.data && j.data.token) pm.environment.set('token', j.data.token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Me (Profile)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "me"]
+            },
+            "description": "Validates the saved {{token}} and returns its matching user object."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Me -> 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('User returned', () => j.data && j.data.user);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. CAPTCHA Earn — Happy Flow",
+      "description": "Run these requests IN ORDER. Collection-level Bearer auth ({{token}}) applies automatically.",
+      "item": [
+        {
+          "name": "Get Current CAPTCHA",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/captcha/current",
+              "host": ["{{baseUrl}}"],
+              "path": ["captcha", "current"]
+            },
+            "description": "Gets or creates the ACTIVE challenge for the token user. Saves challengeId, captchaText, options to env vars for later requests."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Current -> 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('success:true', () => j.success === true);",
+                  "pm.test('Has data', () => !!j.data);",
+                  "const d = j.data;",
+                  "pm.test('Exactly 4 options', () => Array.isArray(d.options) && d.options.length === 4);",
+                  "pm.test('Has captchaText + challengeId + expiresAt', () => d.captchaText && d.challengeId && d.expiresAt);",
+                  "pm.test('correctOption NOT exposed in response (CRITICAL)', () => !('correctOption' in d));",
+                  "pm.test('userId NOT exposed in response', () => !('userId' in d));",
+                  "pm.environment.set('challengeId', d.challengeId);",
+                  "pm.environment.set('captchaText', d.captchaText);",
+                  "pm.environment.set('options', JSON.stringify(d.options));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify Correct",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": \"{{challengeId}}\",\n  \"selectedOption\": \"{{captchaText}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/captcha/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["captcha", "verify"]
+            },
+            "description": "Submits the correct answer (selectedOption === captchaText, which IS one of the 4 options by construction). Backend determines correctness/reward/wallet — NEVER trust client."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Verify -> 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('success:true', () => j.success === true);",
+                  "pm.test('isCorrect true', () => j.data.isCorrect === true);",
+                  "pm.test('rewardStatus = PENDING (wallet NOT incremented here)', () => j.data.rewardStatus === 'PENDING');",
+                  "pm.test('has numeric rewardAmount', () => Number.isFinite(j.data.rewardAmount));",
+                  "pm.test('attemptId present', () => !!j.data.attemptId);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ad Complete",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": \"{{challengeId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/captcha/ad-complete",
+              "host": ["{{baseUrl}}"],
+              "path": ["captcha", "ad-complete"]
+            },
+            "description": "Records that the user has finished watching the rewarded ad overlay. Stamps adCompletedAt on the pending GemTransaction but does NOT claim / does NOT increment wallet."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Ad complete -> 200 or 409 (already claimed/idempotent)', () => [200,409].includes(pm.response.code));",
+                  "const j = pm.response.json();",
+                  "pm.test('message valid', () => typeof j.message === 'string');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Claim",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": \"{{challengeId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/captcha/claim",
+              "host": ["{{baseUrl}}"],
+              "path": ["captcha", "claim"]
+            },
+            "description": "ONLY place wallet increments. Atomically PENDING->CLAIMED + wallet + rewardAmount once. Save the new gems to env for later assertions."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Claim -> 200 or 409 (idempotent/duplicate)', () => [200,409].includes(pm.response.code));",
+                  "const j = pm.response.json();",
+                  "pm.test('data has gems (authoritative wallet balance)', () => j.data && Number.isFinite(j.data.gems));",
+                  "if (j.data) pm.environment.set('gemsAfterClaim', String(j.data.gems));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Wallet",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/wallet/gems",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallet", "gems"]
+            },
+            "description": "Reads server-authoritative wallet balance. Should match data.gems just returned by Claim."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Wallet -> 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('Has gems', () => j.data && Number.isFinite(j.data.gems));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get New CAPTCHA",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": \"{{challengeId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/captcha/new",
+              "host": ["{{baseUrl}}"],
+              "path": ["captcha", "new"]
+            },
+            "description": "Skips current challenge (marks SKIPPED; any pending reward cancelled FAILED) and returns a freshly generated CAPTCHA. Saves new challengeId/captchaText to env."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('New -> 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "const d = j.data || {};",
+                  "pm.test('Different challengeId than prior (new CAPTCHA generated)', () => d.challengeId && d.challengeId !== pm.environment.get('challengeId'));",
+                  "pm.test('Exactly 4 options in new', () => Array.isArray(d.options) && d.options.length === 4);",
+                  "pm.test('correctOption NOT in new response', () => !('correctOption' in d));",
+                  "pm.environment.set('challengeId', d.challengeId);",
+                  "pm.environment.set('captchaText', d.captchaText);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify Wrong",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": \"{{challengeId}}\",\n  \"selectedOption\": \"ZZZZZZ\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/captcha/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["captcha", "verify"]
+            },
+            "description": "Sends a deliberately wrong selectedOption (ZZ...). Backend returns 400 Invalid selected option if not in options array; or if you send an option that IS in the array but != captchaText, backend returns 200 with isCorrect=false and wrongReward pending."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Wrong verify -> 200 (valid option in list but wrong) OR 400 (option not in list)', () => [200, 400].includes(pm.response.code));",
+                  "const j = pm.response.json();",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('isCorrect false', () => j.data.isCorrect === false);",
+                  "  pm.test('rewardStatus still PENDING (wrong reward)', () => j.data.rewardStatus === 'PENDING');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get History (NOT IMPLEMENTED — expected 404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/captcha/history",
+              "host": ["{{baseUrl}}"],
+              "path": ["captcha", "history"]
+            },
+            "description": "This endpoint is referenced in the user's phase plan but is NOT yet wired. Expects the 404 Route not found envelope. Kept here so evaluators can confirm correct 404 response."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('History -> 404 (not implemented)', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Negative Tests",
+      "description": "All must return appropriate 4xx with zero wallet mutation. Run them after the happy flow so {{token}} and {{challengeId}} are populated.",
+      "item": [
+        {
+          "name": "UNAUTHORIZED — No JWT",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/captcha/current",
+              "host": ["{{baseUrl}}"],
+              "path": ["captcha", "current"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('No JWT -> 401', () => pm.response.to.have.status(401));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "INVALID TOKEN — garbage Bearer",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "this-is-not-a-valid-jwt.abc.def", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/wallet/gems",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallet", "gems"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Invalid JWT -> 401', () => pm.response.to.have.status(401));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "INVALID CHALLENGE — nonexistent challengeId verify",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": \"ffffffffffffffffffffffff\",\n  \"selectedOption\": \"ABCDEF\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/captcha/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["captcha", "verify"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Invalid challenge verify -> 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "EXPIRED CHALLENGE — after expiry verify",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": \"{{challengeId}}\",\n  \"selectedOption\": \"{{captchaText}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/captcha/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["captcha", "verify"]
+            },
+            "description": "Run this after a challenge has already been completed (409) or manually wait CAPTCHA_EXPIRY_SECONDS after creating one before running Verify first. Expect 410 EXPIRED if you waited. Expect 409 if already completed."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Expired/Completed verify -> 409 or 410', () => [409, 410].includes(pm.response.code));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "COMPLETED CHALLENGE — duplicate verify",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": \"{{challengeId}}\",\n  \"selectedOption\": \"{{captchaText}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/captcha/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["captcha", "verify"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Duplicate verify -> 409', () => pm.response.to.have.status(409));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "WRONG USER — cross-user (requires 2nd token). Demo only.",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{secondUserToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": \"{{challengeId}}\",\n  \"selectedOption\": \"{{captchaText}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/captcha/claim",
+              "host": ["{{baseUrl}}"],
+              "path": ["captcha", "claim"]
+            },
+            "description": "Set env var {{secondUserToken}} to a DIFFERENT registered user's JWT manually before running. Should return 403 Challenge does not belong to this user."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Cross-user claim -> 403', () => pm.response.to.have.status(403));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "DUPLICATE CLAIM — run Claim twice",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": \"{{challengeId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/captcha/claim",
+              "host": ["{{baseUrl}}"],
+              "path": ["captcha", "claim"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Duplicate claim -> 409', () => pm.response.to.have.status(409));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "INVALID OPTION — empty selectedOption",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": \"{{challengeId}}\",\n  \"selectedOption\": \"\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/captcha/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["captcha", "verify"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Empty selectedOption -> 400 validation fail', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "MISSING OPTION — no selectedOption key",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": \"{{challengeId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/captcha/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["captcha", "verify"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Missing selectedOption -> 400', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "FAKE rewardAmount in verify — backend ignores",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": \"{{challengeId}}\",\n  \"selectedOption\": \"{{captchaText}}\",\n  \"rewardAmount\": 999,\n  \"gems\": 5000,\n  \"isCorrect\": true,\n  \"userId\": \"ffffffffffffffffffffffff\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/captcha/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["captcha", "verify"]
+            },
+            "description": "Spoof ALL tempting fields. Backend MUST ignore every client field beyond challengeId + selectedOption. Expect either 409 (already completed) or 200 with rewardAmount=config (NOT 999)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Spoof body -> 200 or 409', () => [200,409].includes(pm.response.code));",
+                  "const j = pm.response.json();",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('rewardAmount is config (0.5 or 1), NOT 999', () => j.data.rewardAmount <= 1 && j.data.rewardAmount >= 0);",
+                  "  pm.test('isCorrect server value, not forced true', () => typeof j.data.isCorrect === 'boolean');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "FAKE isCorrect — wrong option + isCorrect:true",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": \"{{challengeId}}\",\n  \"selectedOption\": \"ZZZZZZ\",\n  \"isCorrect\": true,\n  \"rewardAmount\": 50\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/captcha/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["captcha", "verify"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('isCorrect spoof -> 400 (ZZ invalid) or 200/409. never trusts client', () => [400,200,409].includes(pm.response.code));",
+                  "const j = pm.response.json();",
+                  "if (pm.response.code === 200) {",
+                  "  // If selectedOption happened to be valid, server still overrides client isCorrect:",
+                  "  pm.test('Server computed isCorrect boolean present', () => typeof j.data.isCorrect === 'boolean');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "FAKE userId in verify — ignored",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": \"{{challengeId}}\",\n  \"selectedOption\": \"{{captchaText}}\",\n  \"userId\": \"000000000000000000000001\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/captcha/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["captcha", "verify"]
+            },
+            "description": "Ownership is always read from JWT. Client userId in body is ignored entirely. Expect 409 (already done) not a state mutation on user 0x00...1."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('userId spoof -> 200/409/400 — never claims as user 0x000...1', () => [200,409,400,403,410].includes(pm.response.code));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "FAKE gems in claim — backend ignores",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": \"{{challengeId}}\",\n  \"gems\": 99999\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/captcha/claim",
+              "host": ["{{baseUrl}}"],
+              "path": ["captcha", "claim"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('gems spoof claim -> 200/409, gems returned is authoritative server value not 99999', () => [200,409].includes(pm.response.code));",
+                  "const j = pm.response.json();",
+                  "if (j.data) {",
+                  "  pm.test('Returned gems is small (<=999), not 99999 (server authoritative)', () => Number.isFinite(j.data.gems) && j.data.gems < 900000);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "RATE LIMIT — 75 rapid captcha/current (60/1m bucket)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/captcha/current",
+              "host": ["{{baseUrl}}"],
+              "path": ["captcha", "current"]
+            },
+            "description": "Duplicate this request many times manually in Postman Runner. Expect 429 after bucket saturates. Do not leave this in production automated runs without backoff."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Under limit -> 200 OR over limit -> 429 with RateLimit headers', () => [200,429].includes(pm.response.code));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

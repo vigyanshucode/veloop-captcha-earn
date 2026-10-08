@@ -26,11 +26,24 @@ app.use(helmet({
 
 const FRONTEND_URL = (process.env.FRONTEND_URL || '').trim();
 const NODE_ENV = process.env.NODE_ENV || 'development';
+const CORS_ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || '').trim();
 const allowedOrigins = [];
 
 if (FRONTEND_URL) {
-  allowedOrigins.push(FRONTEND_URL.replace(/\/$/, ''));
+  const normalized = FRONTEND_URL.replace(/\/$/, '');
+  if (!allowedOrigins.includes(normalized)) allowedOrigins.push(normalized);
 }
+
+if (CORS_ALLOWED_ORIGINS) {
+  const extras = CORS_ALLOWED_ORIGINS
+    .split(',')
+    .map((s) => s.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+  for (const o of extras) {
+    if (!allowedOrigins.includes(o)) allowedOrigins.push(o);
+  }
+}
+
 if (NODE_ENV === 'development') {
   const defaultDevOrigins = ['http://localhost:5173', 'http://127.0.0.1:5173'];
   for (const o of defaultDevOrigins) {

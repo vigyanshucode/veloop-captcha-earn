@@ -52,6 +52,9 @@ const request = async (method, path, body = null, opts = {}) => {
       signal: opts.signal,
     });
   } catch (e) {
+    if (e && e.name === 'AbortError') {
+      throw e;
+    }
     throw new ApiError('Network error. Please check your connection.', 0, null);
   }
 

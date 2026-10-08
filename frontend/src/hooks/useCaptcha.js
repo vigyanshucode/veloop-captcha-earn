@@ -51,6 +51,7 @@ const useCaptcha = () => {
       setChallenge(ch);
       setSelectedOption(null);
       setStep(CAPTCHA_STEPS.IDLE);
+      setLastError(null);
       return ch;
     } catch (err) {
       if (err.name === 'AbortError') return null;
@@ -78,9 +79,10 @@ const useCaptcha = () => {
       if (!challenge) return;
       if (step !== CAPTCHA_STEPS.IDLE) return;
       if (verifyInFlightRef.current) return;
+      setLastError(null);
       setSelectedOption(option);
       setStep(CAPTCHA_STEPS.OPTION_SELECTED);
-      await new Promise((r) => setTimeout(r, 450));
+      await new Promise((r) => setTimeout(r, 160));
       if (!challenge) return;
       verifyInFlightRef.current = true;
       setStep(CAPTCHA_STEPS.VERIFYING);
@@ -91,6 +93,7 @@ const useCaptcha = () => {
         });
         const data = (res.data && res.data.data) || null;
         setVerifyResult(data);
+        setLastError(null);
         if (data && data.isCorrect === true) {
           setStep(CAPTCHA_STEPS.SUCCESS);
         } else {
@@ -118,6 +121,7 @@ const useCaptcha = () => {
   const watchAd = useCallback(async () => {
     if (!challenge) return;
     if (step !== CAPTCHA_STEPS.SUCCESS && step !== CAPTCHA_STEPS.AD_READY) return;
+    setLastError(null);
     setStep(CAPTCHA_STEPS.AD_WATCHING);
     try {
       const res = await api.post('/captcha/ad-complete', {
@@ -125,6 +129,7 @@ const useCaptcha = () => {
       });
       const data = (res.data && res.data.data) || null;
       setAdResult(data);
+      setLastError(null);
       setStep(CAPTCHA_STEPS.AD_READY);
       return data;
     } catch (err) {
@@ -134,6 +139,7 @@ const useCaptcha = () => {
         if (data && data.rewardStatus === 'CLAIMED') {
           setStep(CAPTCHA_STEPS.CLAIMED);
           if (Number.isFinite(data.gems)) setWalletGems(data.gems);
+          setLastError(null);
           return data;
         }
       }
@@ -152,6 +158,7 @@ const useCaptcha = () => {
     ) {
       return;
     }
+    setLastError(null);
     setStep(CAPTCHA_STEPS.CLAIMING);
     try {
       const res = await api.post('/captcha/claim', {
@@ -160,6 +167,7 @@ const useCaptcha = () => {
       const data = (res.data && res.data.data) || null;
       setClaimResult(data);
       if (Number.isFinite(data.gems)) setWalletGems(data.gems);
+      setLastError(null);
       setStep(CAPTCHA_STEPS.CLAIMED);
       return data;
     } catch (err) {
@@ -170,6 +178,7 @@ const useCaptcha = () => {
           setClaimResult(data);
           if (Number.isFinite(data.gems)) setWalletGems(data.gems);
           setStep(CAPTCHA_STEPS.CLAIMED);
+          setLastError(null);
           return data;
         }
       }
@@ -183,6 +192,7 @@ const useCaptcha = () => {
     if (!challenge) {
       return loadCurrent();
     }
+    setLastError(null);
     setStep(CAPTCHA_STEPS.SKIPPING);
     try {
       const res = await api.post('/captcha/new', {

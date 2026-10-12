@@ -29,6 +29,11 @@ const useCaptcha = () => {
   const [walletGems, setWalletGems] = useState(null);
   const abortRef = useRef(null);
   const verifyInFlightRef = useRef(false);
+  const stepRef = useRef(step);
+
+  useEffect(() => {
+    stepRef.current = step;
+  }, [step]);
 
   const resetForNext = useCallback(() => {
     setChallenge(null);
@@ -74,40 +79,52 @@ const useCaptcha = () => {
     };
   }, [loadCurrent]);
 
+
   const selectOption = useCallback(
     async (option) => {
       if (!challenge) return;
-      if (step !== CAPTCHA_STEPS.IDLE) return;
+      if (stepRef.current !== CAPTCHA_STEPS.IDLE) return;
       if (verifyInFlightRef.current) return;
-      setLastError(null);
-      setSelectedOption(option);
-      setStep(CAPTCHA_STEPS.OPTION_SELECTED);
-      await new Promise((r) => setTimeout(r, 160));
-      if (!challenge) return;
+
       verifyInFlightRef.current = true;
-      setStep(CAPTCHA_STEPS.VERIFYING);
+
       try {
+        setLastError(null);
+        setSelectedOption(option);
+        setStep(CAPTCHA_STEPS.OPTION_SELECTED);
+
+        await new Promise((r) => setTimeout(r, 160));
+
+        if (!challenge) return;
+
+        setStep(CAPTCHA_STEPS.VERIFYING);
+
         const res = await api.post('/captcha/verify', {
           challengeId: challenge.challengeId,
           selectedOption: option,
         });
+
         const data = (res.data && res.data.data) || null;
         setVerifyResult(data);
         setLastError(null);
+
         if (data && data.isCorrect === true) {
           setStep(CAPTCHA_STEPS.SUCCESS);
         } else {
           setStep(CAPTCHA_STEPS.INCORRECT);
         }
+
         return data;
       } catch (err) {
         const info = classifyApiError(err);
+
         if (info.category === 'expired') {
           setStep(CAPTCHA_STEPS.EXPIRED);
           setLastError(err);
           setTimeout(() => loadCurrent(), 1500);
           return null;
         }
+
         setStep(CAPTCHA_STEPS.ERROR);
         setLastError(err);
         return null;
@@ -115,7 +132,7 @@ const useCaptcha = () => {
         verifyInFlightRef.current = false;
       }
     },
-    [challenge, step, loadCurrent]
+    [challenge, loadCurrent]
   );
 
   const watchAd = useCallback(async () => {
